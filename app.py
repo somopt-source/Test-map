@@ -12,7 +12,6 @@ st.set_page_config(page_title="Logistics Map", layout="wide")
 # ==========================================
 # 2. การจัดการสถานะ (Session State)
 # ==========================================
-# เก็บค่าโซนที่ผู้ใช้เลือก (ค่าเริ่มต้นคือ 'All')
 if 'selected_zone' not in st.session_state:
     st.session_state.selected_zone = 'All'
 
@@ -37,10 +36,9 @@ data = {
 }
 df = pd.DataFrame(data)
 
-# ข้อมูล Hub 
+# ข้อมูล Hub (จุดเริ่มต้น)
 hub = {'name': 'MEIYA POLYMERS<br>AMATA CITY HUB', 'search_name': 'Amata City Chonburi', 'x': 0, 'y': 0}
 
-# สีของแต่ละโซน
 zone_colors = {
     'Zone 1 (Orange)': '#FF8C00',
     'Zone 2 (Blue)': '#1E90FF',
@@ -57,7 +55,6 @@ with st.sidebar:
     
     st.markdown("<p style='color: #8898aa; font-size: 12px; font-weight: bold;'>SELECT ROUTE ZONE</p>", unsafe_allow_html=True)
     
-    # ปุ่มกดเลือกโซน
     st.button("Show All Zones", use_container_width=True, on_click=set_zone, args=('All',))
     
     col1, col2 = st.columns(2)
@@ -72,7 +69,6 @@ with st.sidebar:
     st.metric(label="All Delivery Routes (TOTAL HUB DISTANCE)", value="1,273 KM")
     st.markdown("---")
     
-    # สร้างการ์ดแสดงรายชื่อสถานที่
     display_df = df.sort_values('distance_km', ascending=False)
     for _, row in display_df.iterrows():
         is_selected = (st.session_state.selected_zone == 'All' or row['zone'] == st.session_state.selected_zone)
@@ -98,11 +94,10 @@ with st.sidebar:
         st.markdown(html_card, unsafe_allow_html=True)
 
 # ==========================================
-# 5. สร้างแผนที่ (Main Area)
+# 5. สร้างแผนที่จำลอง (Main Area)
 # ==========================================
-st.markdown("### 🗺️ แผนที่จำลองเส้นทาง (คลิกที่จุดเพื่อดูแผนที่จริงจาก Google Maps)")
+st.markdown("### 🗺️ แผนที่จำลองเส้นทาง (คลิกที่จุดปลายทางเพื่อดูเส้นทางจริง)")
 
-# กรองข้อมูลตามโซนที่เลือก
 if st.session_state.selected_zone == 'All':
     filtered_df = df
 else:
@@ -117,7 +112,6 @@ for zone_name in filtered_df['zone'].unique():
     x_coords = [hub['x']] + list(zone_data['x'])
     y_coords = [hub['y']] + list(zone_data['y'])
     
-    # 1. วาดเส้นเชื่อม (ไม่ให้คลิกได้)
     fig.add_trace(go.Scatter(
         x=x_coords, y=y_coords,
         mode='lines',
@@ -126,20 +120,18 @@ for zone_name in filtered_df['zone'].unique():
         showlegend=False
     ))
     
-    # 2. วาดจุดปลายทาง (คลิกได้)
     fig.add_trace(go.Scatter(
         x=zone_data['x'], y=zone_data['y'],
         mode='markers+text',
         marker=dict(size=12, color=color, line=dict(width=2, color='white')),
         text=[f"{row['name']}<br>{row['distance_km']} km" for _, row in zone_data.iterrows()],
-        customdata=zone_data['name'], # สำคัญ: ส่งชื่อไปใช้ค้นหาแผนที่
+        customdata=zone_data['name'], 
         textposition="top center",
         textfont=dict(color='white', size=10),
         hoverinfo='text',
         showlegend=False
     ))
 
-# 3. วาดจุด Hub ตรงกลาง
 fig.add_trace(go.Scatter(
     x=[hub['x']], y=[hub['y']],
     mode='markers+text',
@@ -152,7 +144,6 @@ fig.add_trace(go.Scatter(
     showlegend=False
 ))
 
-# ปรับแต่งหน้าตาแผนที่
 fig.update_layout(
     plot_bgcolor='#0b1325', 
     paper_bgcolor='#0b1325', 
@@ -161,33 +152,36 @@ fig.update_layout(
     yaxis=dict(showgrid=True, gridcolor='#1a243a', zeroline=False, showticklabels=False, range=[-40, 40]),
     dragmode='pan',
     height=600,
-    clickmode='event+select' # เปิดโหมดเลือกจุด
+    clickmode='event+select' 
 )
 
-# นำกราฟมาแสดงและจับค่าการคลิก (on_select)
 event = st.plotly_chart(fig, use_container_width=True, on_select="rerun", selection_mode="points")
 
 # ==========================================
-# 6. แสดง Google Maps เมื่อมีการคลิก
+# 6. แสดง Google Maps พร้อมคำนวณเส้นทางอัตโนมัติ
 # ==========================================
 st.markdown("---")
-st.subheader("📍 สถานที่จริงบน Google Maps")
+st.subheader("📍 เส้นทางจริงบน Google Maps")
 
 if event and len(event.selection.points) > 0:
     clicked_point = event.selection.points[0] 
     
-    # ตรวจสอบว่าจุดที่คลิกมีชื่อสถานที่ซ่อนไว้หรือไม่
     if 'customdata' in clicked_point:
         location_name = clicked_point['customdata']
-        search_query = f"{location_name} Thailand"
         
-        # แปลงข้อความสำหรับ URL
-        encoded_query = urllib.parse.quote(search_query)
+        # จุดเริ่มต้น (Meiya) และ จุดหมายปลายทาง
+        origin_query = f"{hub['search_name']} Thailand"
+        destination_query = f"{location_name} Thailand"
         
-        # ดึง iFrame ของ Google Maps
-        gmap_url = f"https://maps.google.com/maps?q={encoded_query}&t=&z=14&ie=UTF8&iwloc=&output=embed"
+        # แปลงข้อความให้รองรับ URL (เช่น เว้นวรรคจะกลายเป็น %20)
+        encoded_origin = urllib.parse.quote(origin_query)
+        encoded_destination = urllib.parse.quote(destination_query)
         
-        st.success(f"กำลังแสดงแผนที่ของ: **{location_name}**")
+        # สร้าง URL ของ Google Maps แบบมีเส้นทาง (Directions)
+        # saddr = Source Address, daddr = Destination Address
+        gmap_url = f"https://maps.google.com/maps?saddr={encoded_origin}&daddr={encoded_destination}&ie=UTF8&output=embed"
+        
+        st.success(f"กำลังแสดงเส้นทางจาก **MEIYA (Amata City)** ไปยัง **{location_name}**")
         components.iframe(gmap_url, height=500, scrolling=True)
 else:
-    st.info("👆 กรุณาคลิกที่จุด (วงกลม) บนแผนที่ด้านบน เพื่อดูสถานที่จริง")
+    st.info("👆 กรุณาคลิกที่จุด (วงกลม) บนแผนที่ด้านบน เพื่อดูเส้นทาง")
