@@ -5,7 +5,7 @@ import urllib.parse
 import streamlit.components.v1 as components
 
 # ==========================================
-# 1. ตั้งค่าหน้าเว็บ (Page Config)
+# 1. ตั้งค่าหน้าเว็บ
 # ==========================================
 st.set_page_config(page_title="Logistics Map", layout="wide")
 
@@ -36,7 +36,6 @@ data = {
 }
 df = pd.DataFrame(data)
 
-# ข้อมูล Hub (จุดเริ่มต้น)
 hub = {'name': 'MEIYA POLYMERS<br>AMATA CITY HUB', 'search_name': 'Amata City Chonburi', 'x': 0, 'y': 0}
 
 zone_colors = {
@@ -66,7 +65,10 @@ with st.sidebar:
         st.button("Zone 4 (Green)", use_container_width=True, on_click=set_zone, args=('Zone 4 (Green)',))
 
     st.markdown("---")
-    st.metric(label="All Delivery Routes (TOTAL HUB DISTANCE)", value="1,273 KM")
+    
+    # 🌟 สร้างพื้นที่ว่าง (Placeholder) ไว้สำหรับใส่ตัวเลขระยะทางที่จะอัปเดตทีหลัง
+    distance_placeholder = st.empty() 
+    
     st.markdown("---")
     
     display_df = df.sort_values('distance_km', ascending=False)
@@ -96,7 +98,7 @@ with st.sidebar:
 # ==========================================
 # 5. สร้างแผนที่จำลอง (Main Area)
 # ==========================================
-st.markdown("### 🗺️ แผนที่จำลองเส้นทาง (คลิกที่จุดปลายทางเพื่อดูเส้นทางจริง)")
+st.markdown("### 🗺️ แผนที่จำลองเส้นทาง (คลิกที่จุดปลายทางเพื่อดูเส้นทางและระยะทางจริง)")
 
 if st.session_state.selected_zone == 'All':
     filtered_df = df
@@ -120,12 +122,15 @@ for zone_name in filtered_df['zone'].unique():
         showlegend=False
     ))
     
+    # 🌟 ซ่อนข้อมูลทั้ง "ชื่อ" และ "ระยะทาง" ไว้ใน customdata
+    custom_data_list = [[row['name'], row['distance_km']] for _, row in zone_data.iterrows()]
+    
     fig.add_trace(go.Scatter(
         x=zone_data['x'], y=zone_data['y'],
         mode='markers+text',
         marker=dict(size=12, color=color, line=dict(width=2, color='white')),
         text=[f"{row['name']}<br>{row['distance_km']} km" for _, row in zone_data.iterrows()],
-        customdata=zone_data['name'], 
+        customdata=custom_data_list, # <--- อัปเดตตรงนี้
         textposition="top center",
         textfont=dict(color='white', size=10),
         hoverinfo='text',
@@ -137,7 +142,7 @@ fig.add_trace(go.Scatter(
     mode='markers+text',
     marker=dict(size=18, color='white', symbol='square', line=dict(width=2, color='#00BFFF')),
     text=[hub['name']],
-    customdata=[hub['search_name']], 
+    customdata=[[hub['search_name'], 0]], # <--- จุด Hub ระยะทางเป็น 0
     textposition="top center",
     textfont=dict(color='white', size=14, family='Arial Black'),
     hoverinfo='text',
@@ -155,33 +160,51 @@ fig.update_layout(
     clickmode='event+select' 
 )
 
+# จับค่า Event เมื่อมีการคลิกบนแผนที่
 event = st.plotly_chart(fig, use_container_width=True, on_select="rerun", selection_mode="points")
 
 # ==========================================
-# 6. แสดง Google Maps พร้อมคำนวณเส้นทางอัตโนมัติ
+# 6. อัปเดตระยะทางที่ Sidebar และแสดง Google Maps
 # ==========================================
 st.markdown("---")
 st.subheader("📍 เส้นทางจริงบน Google Maps")
 
+selected_location_name = None
+selected_distance_km = None
+
+# ตรวจสอบว่ามีการคลิกจุดบนแผนที่หรือไม่
 if event and len(event.selection.points) > 0:
     clicked_point = event.selection.points[0] 
     
     if 'customdata' in clicked_point:
-        location_name = clicked_point['customdata']
+        # ดึงข้อมูลจาก customdata ที่เราซ่อนไว้ (index 0 คือชื่อ, index 1 คือระยะทาง)
+        selected_location_name = clicked_point['customdata'][0]
+        selected_distance_km = clicked_point['customdata'][1]
         
-        # จุดเริ่มต้น (Meiya) และ จุดหมายปลายทาง
+        # แสดงเส้นทางบน Google Maps
         origin_query = f"{hub['search_name']} Thailand"
-        destination_query = f"{location_name} Thailand"
+        destination_query = f"{selected_location_name} Thailand"
         
-        # แปลงข้อความให้รองรับ URL (เช่น เว้นวรรคจะกลายเป็น %20)
         encoded_origin = urllib.parse.quote(origin_query)
         encoded_destination = urllib.parse.quote(destination_query)
         
-        # สร้าง URL ของ Google Maps แบบมีเส้นทาง (Directions)
-        # saddr = Source Address, daddr = Destination Address
         gmap_url = f"https://maps.google.com/maps?saddr={encoded_origin}&daddr={encoded_destination}&ie=UTF8&output=embed"
         
-        st.success(f"กำลังแสดงเส้นทางจาก **MEIYA (Amata City)** ไปยัง **{location_name}**")
+        st.success(f"กำลังแสดงเส้นทางจาก **MEIYA (Amata City)** ไปยัง **{selected_location_name}**")
         components.iframe(gmap_url, height=500, scrolling=True)
 else:
     st.info("👆 กรุณาคลิกที่จุด (วงกลม) บนแผนที่ด้านบน เพื่อดูเส้นทาง")
+
+# 🌟 นำข้อมูลระยะทางกลับไปแสดงใน Sidebar (ที่ Placeholder ที่เราจองพื้นที่ไว้)
+if selected_location_name and selected_distance_km is not None:
+    # ถ้ามีการคลิกจุด ให้แสดงระยะทางของจุดนั้น
+    distance_placeholder.metric(
+        label=f"Route Distance: Meiya ➔ {selected_location_name}", 
+        value=f"{selected_distance_km} KM"
+    )
+else:
+    # ถ้ายังไม่ได้คลิกจุดใดเลย ให้แสดงผลรวม 1,273 KM เหมือนเดิม
+    distance_placeholder.metric(
+        label="All Delivery Routes (TOTAL HUB DISTANCE)", 
+        value="1,273 KM"
+    )
