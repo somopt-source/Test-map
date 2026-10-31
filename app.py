@@ -157,4 +157,37 @@ fig.update_layout(
     plot_bgcolor='#0b1325', 
     paper_bgcolor='#0b1325', 
     margin=dict(l=0, r=0, t=0, b=0),
-    xaxis=
+    xaxis=dict(showgrid=True, gridcolor='#1a243a', zeroline=False, showticklabels=False, range=[-35, 25]),
+    yaxis=dict(showgrid=True, gridcolor='#1a243a', zeroline=False, showticklabels=False, range=[-40, 40]),
+    dragmode='pan',
+    height=600,
+    clickmode='event+select' # เปิดโหมดเลือกจุด
+)
+
+# นำกราฟมาแสดงและจับค่าการคลิก (on_select)
+event = st.plotly_chart(fig, use_container_width=True, on_select="rerun", selection_mode="points")
+
+# ==========================================
+# 6. แสดง Google Maps เมื่อมีการคลิก
+# ==========================================
+st.markdown("---")
+st.subheader("📍 สถานที่จริงบน Google Maps")
+
+if event and len(event.selection.points) > 0:
+    clicked_point = event.selection.points[0] 
+    
+    # ตรวจสอบว่าจุดที่คลิกมีชื่อสถานที่ซ่อนไว้หรือไม่
+    if 'customdata' in clicked_point:
+        location_name = clicked_point['customdata']
+        search_query = f"{location_name} Thailand"
+        
+        # แปลงข้อความสำหรับ URL
+        encoded_query = urllib.parse.quote(search_query)
+        
+        # ดึง iFrame ของ Google Maps
+        gmap_url = f"https://maps.google.com/maps?q={encoded_query}&t=&z=14&ie=UTF8&iwloc=&output=embed"
+        
+        st.success(f"กำลังแสดงแผนที่ของ: **{location_name}**")
+        components.iframe(gmap_url, height=500, scrolling=True)
+else:
+    st.info("👆 กรุณาคลิกที่จุด (วงกลม) บนแผนที่ด้านบน เพื่อดูสถานที่จริง")
